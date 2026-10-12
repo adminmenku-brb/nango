@@ -56,6 +56,28 @@ function apiProxyConfig() {
         throw new Error(`[nango] Unknown REMOTE_API="${remoteApi}". Valid values: ${Object.keys(REMOTE_API_URLS).join(', ')}`);
     }
 
+    // Base44 preview mode: proxy all API traffic to the local backend so the browser never
+    // needs to reach port 3003 directly. NANGO_DASHBOARD_API_URL=/ makes the dashboard use
+    // the same origin, and NANGO_SERVER_URL is set to the preview origin for apiUrl.
+    if (process.env['BASE44_PREVIEW_MODE'] === '1') {
+        const proxyOpts = { target: `http://localhost:${LOCAL_API_PORT}`, changeOrigin: true };
+        return {
+            envProxyPlugin: null,
+            proxy: {
+                '/env.js': { target: `http://localhost:${LOCAL_API_PORT}` },
+                '/api': proxyOpts,
+                '/connect': proxyOpts,
+                '/integrations': proxyOpts,
+                '/providers': proxyOpts,
+                '/proxy': proxyOpts,
+                '/oauth2': proxyOpts,
+                '/api-auth': proxyOpts,
+                '/auth': proxyOpts,
+                '/app-auth': proxyOpts
+            }
+        };
+    }
+
     // Local dev (no REMOTE_API): dashboard talks to the local API directly. Dev CORS trusts
     // any localhost port, so worktree dashboards on 3000/3001/... work without a proxy, and
     // Connect UI reaches the real API (and its OAuth WebSocket) since apiUrl stays the backend
@@ -99,7 +121,7 @@ export default defineConfig(() => {
                 '@': path.resolve(__dirname, './src')
             }
         },
-        server: { port: DEV_PORT, proxy },
+        server: { port: DEV_PORT, host: process.env['BASE44_PREVIEW_MODE'] === '1' ? '0.0.0.0' : undefined, proxy },
         define: {
             'import.meta.env.VITE_HASH': JSON.stringify(createHash('md5').update(Date.now().toString()).digest('hex').slice(0, 8))
         }

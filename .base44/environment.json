@@ -1,0 +1,12 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "NANGO_ENCRYPTION_KEY",
+      "description": "Base64-encoded 256-bit key for encrypting provider credentials. Generate with: openssl rand -base64 32",
+      "requiredAtBoot": true
+    }
+  ]
+}

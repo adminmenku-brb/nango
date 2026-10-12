@@ -1,0 +1,78 @@
+services:
+  nango-db:
+    image: postgres:16.0-alpine
+    environment:
+      POSTGRES_PASSWORD: nango
+      POSTGRES_USER: nango
+      POSTGRES_DB: nango
+    volumes:
+      - nango-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nango"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: on-failure
+
+  nango-redis:
+    image: redis:7.2.4
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: on-failure
+
+  nango-app:
+    image: node:22.23.3-bookworm-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+      - nango-node-modules:/app/node_modules
+    command:
+      [
+        "sh",
+        "-ec",
+        "npm install --no-audit --no-fund && npm run ts-build && concurrently --names 'build,srv,web' --kill-others 'npm run build:watch' 'npm run server:dev:watch' 'npm run webapp:dev:watch'"
+      ]
+    environment:
+      # Preview-mode flags
+      - BASE44_PREVIEW_MODE=1
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+      # Server mode: local dev (not DOCKERIZED) so isLocal=true, flagHasScripts=true
+      - SERVER_PORT=3003
+      - SERVER_SERVICE_URL=http://localhost:3003
+      # Database (local infra creds — generated, not user secrets)
+      - NANGO_DB_HOST=nango-db
+      - NANGO_DB_USER=nango
+      - NANGO_DB_PASSWORD=nango
+      - NANGO_DB_NAME=nango
+      - NANGO_DB_PORT=5432
+      # Public URLs: everything proxied through the webapp on port 3000
+      - NANGO_SERVER_URL=https://3000-${BASE44_PUBLIC_HOST_SUFFIX}
+      - NANGO_PUBLIC_SERVER_URL=https://3000-${BASE44_PUBLIC_HOST_SUFFIX}
+      - NANGO_DASHBOARD_API_URL=/
+      # Features
+      - NANGO_LOGS_ENABLED=false
+      - FLAG_SERVE_CONNECT_UI=true
+      - CSP_REPORT_ONLY=true
+    env_file:
+      - /run/base44/app.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      nango-db:
+        condition: service_healthy
+      nango-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 600s
+    restart: on-failure
+
+volumes:
+  nango-db-data:
+  nango-node-modules:
